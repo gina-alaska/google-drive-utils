@@ -1,0 +1,483 @@
+# frozen_string_literal: true
+
+require 'date'
+class Sat
+  def initialize(path)
+    @filename = File.basename(path)
+    @dirname = File.dirname(path)
+    @is_float = false
+    decode_date
+    decode_type
+    set_legend
+  end
+
+  def get_floating_source()
+	nil
+  end
+
+  def to_string
+    "#{@platform}: #{get_date} / #{@long_type} -> #{@filename}"
+  end
+
+  def decode_date
+    # stub..
+  end
+
+  def decode_type
+    # stub..
+  end
+
+  def set_legend; end
+
+  def get_date
+    @date.strftime('%Y/%m/%d %H:%M')
+  end
+
+  def get_gina_date
+    @date.strftime('%Y%m%d.%H%M')
+        end
+
+  def parse_date(filename, pattern)
+    DateTime.strptime(filename, pattern)
+      end
+  def get_time()
+	@date
+  end
+
+  def float?()
+	@is_float
+  end
+
+  attr_reader :platform
+
+  def long_platform
+    @platform
+        end
+
+  attr_reader :date
+
+  def type
+    @long_type
+  end
+
+  def get_legend
+    return @legend if @legend
+
+    false
+  end
+end
+
+class SatFile
+  class << self
+    def get(x)
+      return NoaaPoes.new(x) if NoaaPoes.item?(x)
+      return SNPPandNOAA20.new(x) if SNPPandNOAA20.item?(x)
+      return TerraAndAqua.new(x) if TerraAndAqua.item?(x)
+      return GCOM.new(x) if GCOM.item?(x)
+      return Metop.new(x) if Metop.item?(x)
+      return Sst.new(x) if Sst.item?(x)
+
+      nil
+    end
+  end
+end
+
+class Metop < Sat
+  def initialize(x)
+    super(x)
+  end
+
+  def decode_date
+    case @filename
+    when /^metop-a.\d{8}.\d{4}/ then
+      @platform = 'metop-a'
+      @date = parse_date(@filename, 'metop-a.%Y%m%d.%H%M')
+    when /^metop-b.\d{8}.\d{4}/ then
+      @platform = 'metop-b'
+      @date = parse_date(@filename, 'metop-b.%Y%m%d.%H%M')
+    when /^metop-c.\d{8}.\d{4}/ then
+      @platform = 'metop-c'
+      @date = parse_date(@filename, 'metop-c.%Y%m%d.%H%M')
+    else
+      raise "unknown date for #{@filename}"
+            end
+  end
+
+  def decode_type
+    long_types = { '4' => 'Band 4, 10.30 - 11.30 um',
+                   '5' => 'Band 5, 11.30 - 12.30 um',
+                   '3a_2_1' => 'AVHRR Landcover' }
+    type = /\w+.\d\d\d\d\d\d\d\d.\d\d\d\d_(\w+)\.tif/.match(@filename)
+    @short_type = type[1]
+    @long_type = @short_type
+    @long_type = long_types[@short_type] if long_types[@short_type]
+  end
+
+  class << self
+    def item?(x)
+      case File.basename(x)
+      when /metop-\w.\d\d\d\d\d\d\d\d.\d\d\d\d_\w+\.tif/ then true
+      when /METOP-\w.\d\d\d\d\d\d\d\d.\d\d\d\d.dat.gz\w+/ then true
+      else false
+      end
+    end
+  end
+end
+
+class GCOM < Sat
+  def initialize(x)
+    super(x)
+  end
+
+  def decode_date
+    # gcom-w.20200916.1609_wind_speed.tif
+    case @filename
+    when /^gcom-w.\d{8}.\d{4}_/ then
+      @platform = 'gcom-w'
+      @date = parse_date(@filename, 'gcom-w.%Y%m%d.%H%M')
+    when /^gcom-w.\d\d\d\d\d\d\d\d.\d\d\d\d.AMSR2-\w+.\w+.tif/ then 
+      @platform = 'gcom-w'
+      @date = parse_date(@filename, 'gcom-w.%Y%m%d.%H%M')
+      @is_float = true
+    else
+      raise "unknown date for #{@filename}"
+            end
+  end
+
+  def decode_type
+    long_types = { 'rain_rate' => 'AMSR2 Rain Rate',
+                   'wind_speed' => 'AMSR2 Wind Speed',
+                   'ice_conc' => 'AMSR2 Ice Concentration',
+		   'snow_depth' =>'AMSR2 Snow Depth',
+ 		   'rgb_sst' => 'AMSR2 SST',
+		   'swe' => 'AMSR2 Snow Water Equivalent',
+                   'snow_cover' => 'AMSR2 Snow Cover' }
+    if @filename =~ /^gcom-w.\d{8}.\d{4}_/ then
+    	type = /\w+.\d\d\d\d\d\d\d\d.\d\d\d\d_(\w+)\.tif/.match(@filename)
+    	@short_type = type[1]
+    	@long_type = @short_type
+    	@long_type = long_types[@short_type] if long_types[@short_type]
+    else
+	type= /^gcom-w.\d\d\d\d\d\d\d\d.\d\d\d\d.AMSR2-(\w+.\w+).tif/.match(@filename)
+	@short_type = type[1]
+        @long_type = @short_type
+	
+    end
+	
+  end
+
+
+  def get_floating_source()
+	mapper = { 
+		"clw" => ".AMSR2-OCEAN.CLW.tif",
+		"rr" => ".AMSR2-OCEAN.Rain_Rate.tif",
+		"rgb_sst" => ".AMSR2-OCEAN.SST.tif",
+		"wind_speed" => ".AMSR2-OCEAN.WSPD.tif",
+		"rain_rate" => ".AMSR2-PRECIP.Rain_Rate.tif",
+		"ice_conc" => ".AMSR2-SEAICE.NASA_Team_2_Ice_Concentration.tif",
+                "Multiyear_Ice" => ".AMSR2-SEAICE.NASA_Team_2_Multiyear_Ice.tif",
+                "swe" => ".AMSR2-SNOW.SWE.tif",
+                "snow_cover" => ".AMSR2-SNOW.Snow_Cover.tif",
+                "snow_depth" => ".AMSR2-SNOW.Snow_Depth.tif",
+                "Soil_Moisture" => ".AMSR2-SOIL.Soil_Moisture.tif"
+		}
+
+	type = /\w+.\d\d\d\d\d\d\d\d.\d\d\d\d_(\w+)\.tif/.match(@filename)
+	if mapper[type[1]]
+		return @dirname +"/gcom-w."+get_gina_date()+mapper[type[1]]
+	else
+		return nil
+	end
+  end
+
+  def set_legend
+    leg = { 'rain_rate' => 'precip.lg.png',
+            'wind_speed' => 'wind_speed.lg.png',
+            'ice_conc' => 'precent.lg.png',
+	    'snow_depth' => 'Snow_depth.png',
+	    'rgb_sst' => 'sst.png',
+	    'swe' => 'swe.png',
+            'snow_cover' => 'snow_cover_amsr2.lg.png' }
+
+    return nil if float? 
+
+    type = /\w+.\d\d\d\d\d\d\d\d.\d\d\d\d_(\w+)\.tif/.match(@filename)
+    @legend = leg[type[1]]
+  end
+
+
+#gcom-w.20201008.1849.AMSR2-PRECIP.Rain_Rate.tif
+  class << self
+    def item?(x)
+      case File.basename(x)
+      when /^gcom-w.\d\d\d\d\d\d\d\d.\d\d\d\d_\w+\.tif/ then true
+      when /^gcom-w.\d\d\d\d\d\d\d\d.\d\d\d\d.AMSR2-\w+.\w+.tif/ then true
+      else false
+      end
+    end
+  end
+end
+
+class TerraAndAqua < Sat
+  def initialize(x)
+    super(x)
+  end
+
+  def decode_date
+    case @filename
+    when /^t1.\d{8}.\d{4}/ then
+      @platform = 'terra-1'
+      @date = parse_date(@filename, 't1.%Y%m%d.%H%M')
+    when /^terra-1.\d{8}.\d{4}/ then
+      @platform = 'terra-1'
+      @date = parse_date(@filename, 'terra-1.%Y%m%d.%H%M')
+    when /^a1.\d{8}.\d{4}/ then
+      @platform = 'aqua-1'
+      @date = parse_date(@filename, 'a1.%Y%m%d.%H%M')
+    when /^aqua-1.\d{8}.\d{4}/ then
+      @platform = 'aqua-1'
+      @date = parse_date(@filename, 'aqua-1.%Y%m%d.%H%M')
+    else
+      raise "unknown date for #{@filename}"
+            end
+  end
+
+  def decode_type
+    long_types = {
+      '3_6_7' => '3 6 7',
+      'true_color' => 'True Color',
+      '31' => 'Thermal band 31', '2_6_1_1' => '2 6 1', '7_2_1_1' => '7 2 1',
+      'micro_physics' => 'Night time microphysics'
+    }
+
+    type = /\w+.\d\d\d\d\d\d\d\d.\d\d\d\d_(\w+)\.tif/.match(@filename)
+    @short_type = type[1]
+    @long_type = @short_type
+    @long_type = long_types[@short_type] if long_types[@short_type]
+  end
+
+  class << self
+    def item?(x)
+      case File.basename(x)
+      when /terra-1.\d\d\d\d\d\d\d\d.\d\d\d\d_\w+\.tif/ then true
+      when /t1.\d\d\d\d\d\d\d\d.\d\d\d\d_\w+\.tif/ then true
+      when /aqua-1.\d\d\d\d\d\d\d\d.\d\d\d\d_\w+\.tif/ then true
+      when /a1.\d\d\d\d\d\d\d\d.\d\d\d\d_\w+\.tif/ then true
+      else false
+      end
+    end
+  end
+end
+
+class SNPPandNOAA20 < Sat
+  def initialize(x)
+    super(x)
+  end
+
+  def decode_date
+    case @filename
+    when /^snpp.\d{8}.\d{4}/ then
+      @platform = 'snpp'
+      @date = parse_date(@filename, 'snpp.%Y%m%d.%H%M')
+    when /^noaa20.\d{8}.\d{4}/ then
+      @platform = 'noaa20'
+      @date = parse_date(@filename, 'noaa20.%Y%m%d.%H%M')
+    when /^npp.\d{8}.\d{4}/ then
+      @platform = 'npp'
+      @date = parse_date(@filename, 'npp.%Y%m%d.%H%M')
+    else
+      raise "unknown date for #{@filename}"
+            end
+  end
+
+  def decode_type
+    long_types = {
+      '3_6_7' => '3 6 7',
+      'true_color' => 'True Color',
+      '31' => 'Thermal band 31', '2_6_1_1' => '2 6 1', '7_2_1_1' => '7 2 1',
+      'DNB' => 'Daynight band',
+      'I05' => 'VIIRS I05',
+      'I03_I02_I01' => 'Land Cover',
+      'm12_m11_m10' => 'VIIRS Fire Temperature',
+      'i04_i02_i01' => 'VIIRS Fire Color',
+      'i03_m08_i01' => 'VIIRS Snowmelt',
+      'i04_colored' => 'Colorized VIIRS i04 (3.74 um)',
+      'micro_physics' => 'Night time microphysics',
+      'rgb_sst' => 'ACSPO Sea Surface Temperature'
+    }
+
+    type = /\w+.\d\d\d\d\d\d\d\d.\d\d\d\d_(\w+)\.tif/.match(@filename)
+    @short_type = type[1]
+    @long_type = @short_type
+    @long_type = long_types[@short_type] if long_types[@short_type]
+  end
+
+  def set_legend
+    leg = { 'rain_rate' => 'precip.lg.png',
+            'wind_speed' => 'wind_speed.lg.png',
+            'ice_conc' => 'precent.lg.png',
+            'snow_depth' => 'Snow_depth.png',
+            'rgb_sst' => 'sst.png',
+            'swe' => 'swe.png',
+            'snow_cover' => 'snow_cover_amsr2.lg.png' }
+
+    return nil if float?
+    @legend = leg[@short_type]
+  end
+
+
+  def get_floating_source()
+      mapper = { 
+		"rgb_sst" => "_viirs_sst_*_alaska_300.float.tif"
+        }
+      if mapper[@short_type] 
+	puts @dirname+"/*"+@platform+mapper[@short_type]
+	options = Dir.glob(@dirname+"/*"+@platform+mapper[@short_type])
+	if options.length == 1
+		return options.first
+	else
+		return nil
+	end
+      else
+	return nil
+      end
+  end
+
+  class << self
+    def item?(x)
+      case File.basename(x)
+      when /noaa20.\d\d\d\d\d\d\d\d.\d\d\d\d_\w+\.tif/ then true
+      when /snpp.\d\d\d\d\d\d\d\d.\d\d\d\d_\w+\.tif/ then true
+      when /npp.\d\d\d\d\d\d\d\d.\d\d\d\d_\w+\.tif/ then true
+      else false
+      end
+    end
+  end
+end
+
+class NoaaPoes < Sat
+  def initialize(x)
+    super(x)
+  end
+
+  def decode_date
+    case @filename
+    when /^noaa15.\d{8}.\d{4}/ then
+      @platform = 'noaa15'
+      @date = parse_date(@filename, 'noaa15.%Y%m%d.%H%M')
+    when /^noaa18.\d{8}.\d{4}/ then
+      @platform = 'noaa18'
+      @date = parse_date(@filename, 'noaa18.%Y%m%d.%H%M')
+    when /^noaa19.\d{8}.\d{4}/ then
+      @platform = 'noaa19'
+      @date = parse_date(@filename, 'noaa19.%Y%m%d.%H%M')
+    else
+      raise "unknown date for #{@filename}"
+      end
+  end
+
+  def decode_type
+    long_types = { '4' => 'Band 4, 10.30 - 11.30 um',
+                   '5' => 'Band 5, 11.30 - 12.30 um',
+                   '3a_2_1' => 'AVHRR Landcover' }
+
+    type = /noaa\d\d.\d\d\d\d\d\d\d\d.\d\d\d\d_(\w+)\.tif/.match(@filename)
+    @short_type = type[1]
+    @long_type = @short_type
+    @long_type = long_types[@short_type] if long_types[@short_type]
+  end
+
+  class << self
+    def item?(x)
+      case File.basename(x)
+      when /noaa15.\d\d\d\d\d\d\d\d.\d\d\d\d_\w+\.tif/ then true
+      when /noaa18.\d\d\d\d\d\d\d\d.\d\d\d\d_\w+\.tif/ then true
+      when /noaa19.\d\d\d\d\d\d\d\d.\d\d\d\d_\w+\.tif/ then true
+      else false
+      end
+    end
+  end
+end
+
+
+class Sst < Sat
+  def initialize(x)
+    super(x)
+    @is_float = true
+  end
+
+
+#./TERRA.20190730.234506.dat.gz/terra_modis_sst_20190730_234626_alaska_500.float.tif
+#./AQUA.20190731.000135.dat.gz/aqua_modis_sst_20190731_000238_alaska_500.float.tif
+#./NPP.20190731.000438.dat.gz/npp_viirs_sst_20190731_000549_alaska_300.float.tif
+#Anpp_viirs_sst_20201008_224752_alaska_300.float.tif
+#npp.20201008.2247_rgb_sst.tif
+
+  def decode_date
+    case @filename
+    when /^terra_modis_sst_\d{8}_\d{4}/ then
+      @platform = 'terra-1'
+      @date = parse_date(@filename, 'terra_modis_sst_%Y%m%d_%H%M')
+    when /^aqua_modis_sst_\d{8}_\d{4}/ then
+      @platform = 'aqua-1'
+      @date = parse_date(@filename, 'aqua_modis_sst_%Y%m%d_%H%M')
+    when /^npp_viirs_sst_\d{8}_\d{4}/ then
+      @platform = 'npp'
+      @date = parse_date(@filename, 'npp_viirs_sst_%Y%m%d_%H%M')
+    when /^noaa20_viirs_sst_\d{8}_\d{4}/ then
+      @platform = 'noaa20'
+      @date = parse_date(@filename, 'noaa20_viirs_sst_%Y%m%d_%H%M')
+    when /^terra_modis_sst_\d{8}_\d{4}/ then
+      @platform = 'terra-1'
+      @date = parse_date(@filename, 'terra_modis_sst_%Y%m%d_%H%M')
+    when /^aqua_modis_sst_\d{8}_\d{4}/ then
+      @platform = 'aqua-1'
+      @date = parse_date(@filename, 'aqua_modis_sst_%Y%m%d_%H%M')
+    when /^npp_viirs_sst_\d{8}_\d{4}/ then
+      @platform = 'npp'
+      @date = parse_date(@filename, 'npp_viirs_sst_%Y%m%d_%H%M')
+    when /^noaa20_viirs_sst_\d{8}_\d{4}/ then
+      @platform = 'noaa20'
+      @date = parse_date(@filename, 'noaa20_viirs_sst_%Y%m%d_%H%M')
+    else
+      raise "unknown date for #{@filename}"
+      end
+  end
+
+  def decode_type
+    @short_type = "sst"
+    @long_type = "Sea Surface Temperature" 
+  end
+
+  class << self
+    def item?(x)
+      case File.basename(x)
+      when /^terra_modis_sst_\d\d\d\d\d\d\d\d_\d\d\d\d\d\d_\w+\.tif/ then true
+      when /^aqua_modis_sst_\d\d\d\d\d\d\d\d.\d\d\d\d\d\d_\w+\.tif/ then true
+      when /^npp_viirs_sst_\d\d\d\d\d\d\d\d_\d\d\d\d\d\d_\w+\.tif/ then true
+      when /^noaa20_viirs_sst_\d\d\d\d\d\d\d\d_\d\d\d\d\d\d_\w+\.tif/ then true
+      when /^terra_modis_sst_\d\d\d\d\d\d\d\d_\d\d\d\d\d\d_alaska_500.float.tif/ then true
+      when /^aqua_modis_sst_\d\d\d\d\d\d\d\d_\d\d\d\d\d\d_alaska_500.float.tif/ then true
+      when /^npp_viirs_sst_\d\d\d\d\d\d\d\d_\d\d\d\d\d\d_alaska_300.float.tif/ then true
+      when /^noaa20_viirs_sst_\d\d\d\d\d\d\d\d_\d\d\d\d\d\d_alaska_300.float.tif/ then true
+      else false
+      end
+    end
+  end
+end
+
+
+# source = '/home/jecable/distro/nrt/'
+#
+# list = `find  #{source} -name "*.tif"`.split("\n")
+#
+# list.each do |x|
+#   s = SatFile.get(x)
+#   if s
+#     puts s.to_string
+#   else
+#     puts "Missing -> #{x}"
+#   end
+#
+# end
+# =begin
