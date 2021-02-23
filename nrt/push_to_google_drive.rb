@@ -35,6 +35,10 @@ ARGV.each do |set|
 
    list.reverse.each do  |item|
 	s = Satellite.new( item)
+	if !File.exists?(item)
+		puts("INFO: Missing #{item}")
+		next
+	end
 	next if s.unknown?
 	if ( check(s.archive_path, item) ) 
 		puts("INFO: Good #{item}")
@@ -44,6 +48,7 @@ ARGV.each do |set|
 	end
 
 	FileUtils.cp(item, ".")
+	puts("INFO: ~/gopath/bin/drive push -no-prompt -no-clobber -upload-chunk-size 268435456 -destination #{s.archive_path} #{File.basename(item)}")
 	system("~/gopath/bin/drive push -no-prompt -no-clobber -upload-chunk-size 268435456 -destination #{s.archive_path} #{File.basename(item)}")
 	FileUtils.rm(File.basename(item))
 
