@@ -46,7 +46,10 @@ ARGV.each do |set|
 
    list.reverse.each do  |item|
 	s = Satellite.new( item)
-	next if s.unknown?
+	if s.unknown?
+		puts("INFO: Not sure what this is, skipping #{item}")
+		next
+	end
 	size = File.size?(item)
 	size = 0 if !size
 	if ( check(s.archive_path, item) ) 
